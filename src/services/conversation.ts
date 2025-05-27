@@ -2,6 +2,7 @@ import { openaiService } from './openai';
 import { ragService } from './rag';
 import { DocumentChunk } from './pinecone';
 import { logger } from '../utils/logger';
+import { seoyoonPrompt } from '../utils/prompt';
 
 export interface ConversationMessage {
     id: string;
@@ -31,6 +32,7 @@ export interface ChatResponse {
     affinity: number;
     sessionId: string;
     messageId: string;
+    affinityUpdateReason?: string;
 }
 
 export class ConversationService {
@@ -70,7 +72,13 @@ export class ConversationService {
                 session = this.getSession(newSessionId)!;
             }
 
-            // 1. 사용자 메시지 저장
+            // 1. 과거 대화 기억 검색 (RAG)
+            // const memories = await this.searchMemories(request.userId, request.message);
+
+            // 2. 대화 히스토리 구성
+            const conversationHistory = session.messages.slice(-200);
+
+            // 3. 사용자 메시지 저장
             const userMessageId = `msg_${Date.now()}_user`;
             const userMessage: ConversationMessage = {
                 id: userMessageId,
@@ -80,46 +88,46 @@ export class ConversationService {
             };
             session.messages.push(userMessage);
 
-            // 2. 과거 대화 기억 검색 (RAG)
-            const memories = await this.searchMemories(request.userId, request.message);
-
-            // 3. 대화 컨텍스트 구성
-            const conversationContext = this.buildConversationContext(session, memories);
-
             // 4. AI 응답 생성
-            const aiResponse = await openaiService.generateRAGResponse(
+            const aiResult = await openaiService.generateRAGResponse(
                 request.message,
-                conversationContext,
-                undefined // systemPrompt는 이미 openaiService에 내장되어 있음
+                conversationHistory,
+                seoyoonPrompt(session.currentAffinity)
             );
+            console.log(aiResult);
 
-            // 5. 호감도 추출
-            const affinity = this.extractAffinity(aiResponse);
-            const cleanResponse = this.cleanResponse(aiResponse);
+            // 5. 호감도 업데이트 처리
+            let newAffinity = session.currentAffinity;
+            if (aiResult.affinityUpdate) {
+                // Function calling으로 호감도 업데이트가 요청된 경우
+                newAffinity = Math.max(-100, Math.min(100, aiResult.affinityUpdate.newAffinity));
+                logger.info(`Affinity updated from ${session.currentAffinity} to ${newAffinity}: ${aiResult.affinityUpdate.reason}`);
+            }
 
             // 6. AI 응답 저장
             const aiMessageId = `msg_${Date.now()}_assistant`;
             const aiMessage: ConversationMessage = {
                 id: aiMessageId,
                 role: 'assistant',
-                content: cleanResponse,
+                content: aiResult.response,
                 timestamp: new Date(),
-                affinity
+                affinity: newAffinity
             };
             session.messages.push(aiMessage);
-            session.currentAffinity = affinity;
+            session.currentAffinity = newAffinity;
             session.updatedAt = new Date();
 
             // 7. 대화 내역을 RAG 시스템에 저장
-            await this.saveConversationToRAG(request.userId, userMessage, aiMessage);
+            // await this.saveConversationToRAG(request.userId, userMessage, aiMessage);
 
-            logger.info(`Message processed successfully. Affinity: ${affinity}`);
+            logger.info(`Message processed successfully. Affinity: ${newAffinity}`);
 
             return {
-                message: cleanResponse,
-                affinity,
+                message: aiResult.response,
+                affinity: newAffinity,
                 sessionId: session.sessionId,
-                messageId: aiMessageId
+                messageId: aiMessageId,
+                affinityUpdateReason: aiResult.affinityUpdate?.reason
             };
 
         } catch (error) {
@@ -142,44 +150,6 @@ export class ConversationService {
             logger.warn(`Failed to search memories, continuing without context, error: ${error}`);
             return [];
         }
-    }
-
-    // 대화 컨텍스트 구성
-    private buildConversationContext(session: ConversationSession, memories: string[]): string[] {
-        const context: string[] = [];
-
-        // 과거 기억 추가
-        if (memories.length > 0) {
-            context.push(`과거 대화 기억:\n${memories.join('\n\n')}`);
-        }
-
-        // 최근 대화 내역 추가 (최대 10개)
-        const recentMessages = session.messages.slice(-10);
-        if (recentMessages.length > 0) {
-            const recentConversation = recentMessages
-                .map(msg => `${msg.role === 'user' ? '사용자' : '서윤'}: ${msg.content}`)
-                .join('\n');
-            context.push(`최근 대화:\n${recentConversation}`);
-        }
-
-        // 현재 호감도 정보 추가
-        context.push(`현재 호감도: ${session.currentAffinity}`);
-
-        return context;
-    }
-
-    // 응답에서 호감도 추출
-    private extractAffinity(response: string): number {
-        const affinityMatch = response.match(/<affinity>(-?\d+)<\/affinity>/);
-        if (affinityMatch) {
-            return parseInt(affinityMatch[1], 10);
-        }
-        return 0; // 기본값
-    }
-
-    // 응답에서 호감도 태그 제거
-    private cleanResponse(response: string): string {
-        return response.replace(/<affinity>-?\d+<\/affinity>/g, '').trim();
     }
 
     // 대화 내역을 RAG 시스템에 저장

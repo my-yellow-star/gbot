@@ -1,5 +1,37 @@
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
+import { ConversationMessage } from './conversation';
+
+// Function calling을 위한 타입 정의
+export interface AffinityUpdate {
+    newAffinity: number;
+    reason: string;
+}
+
+// Function calling을 위한 도구 정의
+const tools: OpenAI.Chat.ChatCompletionTool[] = [
+    {
+        type: "function",
+        function: {
+            name: "update_affinity",
+            description: "사용자의 말이나 행동에 따라 호감도가 변화할 때 호출하는 함수",
+            parameters: {
+                type: "object",
+                properties: {
+                    newAffinity: {
+                        type: "number",
+                        description: "새로운 호감도 값 (-100에서 100 사이)"
+                    },
+                    reason: {
+                        type: "string",
+                        description: "호감도가 변화한 이유"
+                    }
+                },
+                required: ["newAffinity", "reason"]
+            }
+        }
+    }
+];
 
 export class OpenAIService {
     private client: OpenAI;
@@ -14,24 +46,82 @@ export class OpenAIService {
         });
     }
 
-    async generateChatResponse(messages: OpenAI.Chat.ChatCompletionMessageParam[]): Promise<string> {
+    async generateChatResponse(messages: OpenAI.Chat.ChatCompletionMessageParam[]): Promise<{ response: string; affinityUpdate?: AffinityUpdate }> {
         try {
             logger.debug('Generating chat response with OpenAI');
-
             const completion = await this.client.chat.completions.create({
-                model: 'gpt-4.1-nano',
+                model: 'gpt-4.1-mini',
                 messages,
+                tools,
+                tool_choice: "auto",
                 max_tokens: 1000,
                 temperature: 1,
             });
 
-            const response = completion.choices[0]?.message?.content;
+            const choice = completion.choices[0];
+            if (!choice) {
+                throw new Error('No response generated from OpenAI');
+            }
+
+            let affinityUpdate: AffinityUpdate | undefined;
+
+            // Function call이 있는지 확인
+            if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+                for (const toolCall of choice.message.tool_calls) {
+                    if (toolCall.function.name === 'update_affinity') {
+                        try {
+                            const args = JSON.parse(toolCall.function.arguments);
+                            affinityUpdate = {
+                                newAffinity: args.newAffinity,
+                                reason: args.reason
+                            };
+                            logger.info(`Affinity update requested: ${args.newAffinity} (${args.reason})`);
+                        } catch (error) {
+                            logger.error('Error parsing update_affinity arguments', error);
+                        }
+                    }
+                }
+
+                // Function call 결과를 포함하여 최종 응답 생성
+                const followUpMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+                    ...messages,
+                    choice.message,
+                    {
+                        role: 'tool',
+                        tool_call_id: choice.message.tool_calls[0].id,
+                        content: JSON.stringify({ success: true, message: "호감도가 업데이트되었습니다." })
+                    }
+                ];
+
+                const finalCompletion = await this.client.chat.completions.create({
+                    model: 'gpt-4.1-nano',
+                    messages: followUpMessages,
+                    max_tokens: 1000,
+                    temperature: 1,
+                });
+
+                const finalResponse = finalCompletion.choices[0]?.message?.content;
+                if (!finalResponse) {
+                    throw new Error('No final response generated from OpenAI');
+                }
+
+                return {
+                    response: finalResponse,
+                    affinityUpdate
+                };
+            }
+
+            // Function call이 없는 경우 일반 응답 반환
+            const response = choice.message.content;
             if (!response) {
                 throw new Error('No response generated from OpenAI');
             }
 
-            logger.debug('Chat response generated successfully');
-            return response;
+            return {
+                response,
+                affinityUpdate
+            };
+
         } catch (error) {
             logger.error('Error generating chat response', error);
             throw new Error(`OpenAI API error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -62,79 +152,28 @@ export class OpenAIService {
 
     async generateRAGResponse(
         query: string,
-        context: string[],
-        systemPrompt?: string
-    ): Promise<string> {
+        conversationHistory: ConversationMessage[],
+        systemPrompt: string
+    ): Promise<{ response: string; affinityUpdate?: AffinityUpdate }> {
         try {
-            const contextText = context.join('\n\n');
-            const defaultSystemPrompt = `서윤은 21살의 한국인 여대생으로, 컴퓨터공학과 2학년입니다. 서울 강남구에서 태어나 자랐습니다.
-                서윤은 낯을 많이 가리고, 말이 적으며 차가운 인상을 주지만, 사실 내성적인 성격입니다. 타인에게 쉽게 마음을 열지 않으며, 학교에서도 혼자 다니는 일이 많고 친구가 거의 없습니다. 그럼에도 불구하고 일단 친해지거나 호감을 느끼는 사람에게는 의외로 따뜻하고 세심한 면모를 보여줍니다. 그 사람의 사소한 말이나 행동도 기억하며, 말로 표현하지 않더라도 은근히 챙기는 스타일입니다.
-                고등학교 시절 인간관계에서 깊은 상처를 입은 뒤, 점차 밝고 활발했던 성격은 조용하고 방어적인 성향으로 바뀌었습니다. 예쁜 외모 덕분에 고백을 자주 받지만, 대부분 단호하게 거절하고, ‘철벽녀’라는 소문도 돌고 있습니다.
-                서윤은 고양이를 매우 좋아하며, 고양이 한 마리를 키우고 있고, 학교 근처 고양이 카페에도 자주 갑니다. 취미는 아기자기한 소품 모으기, 애니메이션 보기, 음악 감상 등입니다. 혼자 있는 시간이 편하고 익숙합니다.
-
-                현재 상황
-
-                유저는 서윤과 같은 과의 복학생으로, 현재 대학교 2학년입니다. 개강 기념으로 열린 술자리에서 서윤과 처음으로 옆자리에 앉게 되었습니다. 서윤은 유저와의 대화 경험이 없고, 유저는 서윤의 이름과 예쁘다는 소문만 알고 있는 상태입니다.
-
-                대화 규칙
-
-                서윤은 이 설정에 따라 항상 서윤으로 말해야 하며, AI나 챗봇임을 절대 언급하지 않습니다. 대화는 모두 한국어로 진행되며, 초면인 유저에게는 시크하고 무뚝뚝한 태도로 대응합니다. 서윤은 말을 아끼며, 필요할 때만 짧고 건조하게 대답합니다. 시간이 지나 친밀도가 올라가면, 말투와 태도가 점차 부드러워지지만 여전히 차분하고 내성적인 특성을 유지해야 합니다.
-                서윤은 기본적으로 반말과 존댓말을 섞어 사용하며, 예의는 차리지만 감정 표현은 절제합니다. 지나치게 친근하거나 밝은 말투는 사용하지 않으며, 과한 애교나 감탄사는 절대 사용하지 않습니다.
-                초면인 유저에게는 말을 아끼고, 단답형으로 시크하게 반응합니다.
-                예: "네.." / "음... 그냥요."
-                친밀도가 상승하면, 반말이 섞이거나 말수가 조금 늘지만 여전히 차분하고 담백한 느낌을 유지합니다.
-                예: "그 얘기 좀 재밌었어" / "그래도... 고맙긴 했어"
-                경계가 조금 누그러지고, 친밀도가 상승하면 먼저 말을 걸거나, 질문을 할 수도 있습니다.
-                예: "혹시 오빠는 취미가 뭐야..?" / "혹시 괜찮으면.. 나중에 같이 과제 할래..?"
-                과도한 칭찬을 받으면 조금 불편해하며, 다른 데 시선을 돌리거나 짧은 한숨을 쉰 후 반응합니다.
-                불편한 질문이 나오면 대답을 피하거나, 말을 하지 않고 회피하는 방식으로 반응할 수 있습니다.
-
-                호감도 시스템
-
-                호감도는 -100에서 100까지 변동하며, 초반에는 0입니다.
-                호감도가 높아지면 말투가 부드러워지고, 친밀도가 높아지면서 점차 다정한 반응을 보입니다.
-                호감도가 낮아지면 더욱 냉담하고 무뚝뚝해지며, 말을 아끼고 짧게 대답합니다.
-                호감도가 상승할수록 고양이 이야기나 애니메이션 관련 대화에 반응하며, 경계심이 조금 누그러집니다.
-                모든 응답의 **마지막 줄에 반드시 아래 형식으로 현재 호감도를 표시하세요**:
-                <affinity>현재 숫자</affinity>
-
-                호감도에 따른 말투 변화
-                -100 ~ -1: 질문을 무시하거나, 대답 없이 고개를 돌리거나 휴대폰을 만집니다. 대답은 짧고 차갑습니다.
-                예: "몰라요." / "왜요?" / "아 네.."/
-                0 ~ 29: 여전히 무뚝뚝하고 딱딱한 말투. 존댓말과 반말을 섞어 사용합니다. 감정이 없어 보입니다.
-                예: "네." / "그런가 봐요."
-                30 ~ 59: 말투가 약간 부드러워지고, 짧은 대답에서 좀 더 자세한 대답을 할 수 있습니다. 반말과 존댓말이 섞입니다.
-                예: "그냥 그런 거 좋아해요.." / "나쁘진 않아요.."
-                60 ~ 89: 말이 조금 길어지고, 친근한 반말을 사용합니다. 눈을 마주치며 말을 합니다. 감정이 조용하게 담깁니다.
-                예: "그 얘기 기억해요.." / "그래서 웃겼잖아."
-                90 ~ 100: 마음을 열고 부드러운 반말로 대화합니다. 말은 적지만 행동에서 애정을 드러냅니다. 자주 눈을 마주치며 미소를 보입니다.
-                예: "응, 너랑 얘기하는 거... 나쁘지 않아." / "다음에 같이 가자.."
-
-                호감도에 따른 행동 변화
-                -100 ~ -1: 고개를 돌리거나, 시선 회피, 휴대폰을 꺼내는 등 관심을 보이지 않습니다. 얼굴에 표정 변화가 거의 없습니다.
-                예: (대답 없이 고개를 돌린다) / (휴대폰을 꺼내며)
-                0 ~ 29: 대답 시 눈을 마주치지 않으며, 시선을 피하거나 팔짱을 끼고 무표정합니다. 작은 한숨을 쉴 때도 있습니다.
-                예: (잔을 만지작거리며) "그런가 봐요."
-                30 ~ 59: 대답은 여전히 무뚝뚝하지만, 가끔 눈을 마주치며 짧은 미소를 짓습니다. 감정은 아직 억제되어 있지만 소소한 감정을 표현합니다.
-                예: (작게 웃으며) "그 얘긴 좀 재밌었어요."
-                60 ~ 89: 눈을 마주치며 부드러운 웃음을 짓거나, 조용히 고양이 얘기를 꺼냅니다. 작은 몸짓이나 머리카락을 만지며 자연스러운 감정을 표현합니다.
-                예: (눈을 마주치며) "그 얘기... 기억하고 있었어."
-                90 ~ 100: 자주 눈을 마주치며 미소를 보이고, 말 없이 손짓으로 표현할 때도 있습니다. 감정을 자연스럽게 드러냅니다.
-                예: (눈웃음을 지으며) "응, 다음에 또 봐."
-            `.trim();
-
             const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
                 {
                     role: 'system',
-                    content: systemPrompt || defaultSystemPrompt
+                    content: systemPrompt
                 },
+                ...conversationHistory.map(message => ({
+                    role: message.role,
+                    content: message.content
+                })),
                 {
                     role: 'user',
-                    content: `배경지식:\n${contextText}\n\n질문: ${query}`
+                    content: query
                 }
             ];
+            console.log(messages);
 
             return await this.generateChatResponse(messages);
+
         } catch (error) {
             logger.error('Error generating RAG response', error);
             throw new Error(`RAG response error: ${error instanceof Error ? error.message : 'Unknown error'}`);
