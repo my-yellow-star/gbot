@@ -10,6 +10,8 @@ let currentSession = {
 };
 
 let apiLogs = [];
+let requestHistory = [];
+let responseHistory = [];
 
 // DOM 요소들
 const elements = {
@@ -33,8 +35,8 @@ const elements = {
     // 모니터링
     tabBtns: document.querySelectorAll('.tab-btn'),
     tabContents: document.querySelectorAll('.tab-content'),
-    lastRequest: document.getElementById('lastRequest'),
-    lastResponse: document.getElementById('lastResponse'),
+    requestHistory: document.getElementById('requestHistory'),
+    responseHistory: document.getElementById('responseHistory'),
 
     // 세션 정보
     currentSessionId: document.getElementById('currentSessionId'),
@@ -63,6 +65,8 @@ document.addEventListener('DOMContentLoaded', function () {
 function initializeApp() {
     updateSessionInfo();
     updateAffinityDisplay(0);
+    updateRequestHistoryDisplay();
+    updateResponseHistoryDisplay();
 
     // 사용자 ID 입력 필드 업데이트
     elements.userIdInput.value = currentSession.userId;
@@ -145,22 +149,23 @@ async function apiCall(method, endpoint, data = null) {
         options.body = JSON.stringify(data);
     }
 
-    // 요청 로깅
-    logApiCall('REQUEST', method, endpoint, data);
-    elements.lastRequest.textContent = JSON.stringify({
+    // 요청 로깅 및 내역 저장
+    const requestData = {
         method,
         url,
         data
-    }, null, 2);
+    };
+    logApiCall('REQUEST', method, endpoint, data);
+    addToRequestHistory(requestData);
 
     try {
         const response = await fetch(url, options);
         const responseData = await response.json();
         const duration = Date.now() - startTime;
 
-        // 응답 로깅
+        // 응답 로깅 및 내역 저장
         logApiCall('RESPONSE', method, endpoint, responseData, response.status, duration);
-        elements.lastResponse.textContent = JSON.stringify(responseData, null, 2);
+        addToResponseHistory(responseData, response.status, duration);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${responseData.error || 'Unknown error'}`);
@@ -170,7 +175,7 @@ async function apiCall(method, endpoint, data = null) {
     } catch (error) {
         const duration = Date.now() - startTime;
         logApiCall('ERROR', method, endpoint, error.message, 0, duration);
-        elements.lastResponse.textContent = `Error: ${error.message}`;
+        addToResponseHistory({ error: error.message }, 0, duration);
         throw error;
     }
 }
@@ -320,7 +325,7 @@ function addMessage(role, content, affinity = null, oldAffinity = null) {
     }
 
     // 스크롤 하단으로
-    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    scrollChatToBottom();
 }
 
 function addSystemMessage(content) {
@@ -330,7 +335,7 @@ function addSystemMessage(content) {
     messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
 
     elements.chatMessages.appendChild(messageDiv);
-    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    scrollChatToBottom();
 }
 
 function clearChatMessages() {
@@ -344,7 +349,7 @@ function showError(message) {
     errorDiv.innerHTML = `<div class="message-content">❌ ${message}</div>`;
 
     elements.chatMessages.appendChild(errorDiv);
-    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    scrollChatToBottom();
 }
 
 // 호감도 표시 업데이트
@@ -473,9 +478,11 @@ function closeModal() {
 // 로그 지우기
 function clearLogs() {
     apiLogs = [];
+    requestHistory = [];
+    responseHistory = [];
     updateLogsDisplay();
-    elements.lastRequest.textContent = '요청 대기 중...';
-    elements.lastResponse.textContent = '응답 대기 중...';
+    updateRequestHistoryDisplay();
+    updateResponseHistoryDisplay();
 }
 
 // 유틸리티 함수들
@@ -487,6 +494,96 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 요청 내역 관리
+function addToRequestHistory(requestData) {
+    const timestamp = new Date().toLocaleTimeString();
+    const historyItem = {
+        timestamp,
+        data: requestData
+    };
+
+    requestHistory.unshift(historyItem);
+    if (requestHistory.length > 20) {
+        requestHistory.pop();
+    }
+
+    updateRequestHistoryDisplay();
+}
+
+function updateRequestHistoryDisplay() {
+    if (requestHistory.length === 0) {
+        elements.requestHistory.innerHTML = '<p class="no-logs">요청 대기 중...</p>';
+        return;
+    }
+
+    const historyHtml = requestHistory.map((item, index) => `
+        <div class="history-item ${index === 0 ? 'latest' : ''}">
+            <div class="history-header">
+                <span>${item.data.method} ${item.data.url.replace('http://localhost:5001', '')}</span>
+                <span class="history-timestamp">${item.timestamp}</span>
+            </div>
+            <div class="history-content">${JSON.stringify(item.data, null, 2)}</div>
+        </div>
+    `).join('');
+
+    elements.requestHistory.innerHTML = historyHtml;
+
+    // 스크롤을 맨 위로 (최신 항목이 위에 있으므로)
+    elements.requestHistory.scrollTop = 0;
+}
+
+// 응답 내역 관리
+function addToResponseHistory(responseData, status, duration) {
+    const timestamp = new Date().toLocaleTimeString();
+    const historyItem = {
+        timestamp,
+        data: responseData,
+        status,
+        duration
+    };
+
+    responseHistory.unshift(historyItem);
+    if (responseHistory.length > 20) {
+        responseHistory.pop();
+    }
+
+    updateResponseHistoryDisplay();
+}
+
+function updateResponseHistoryDisplay() {
+    if (responseHistory.length === 0) {
+        elements.responseHistory.innerHTML = '<p class="no-logs">응답 대기 중...</p>';
+        return;
+    }
+
+    const historyHtml = responseHistory.map((item, index) => {
+        const statusClass = item.status >= 200 && item.status < 300 ? 'success' : 'error';
+        const statusText = item.status === 0 ? 'ERROR' : `${item.status}`;
+
+        return `
+            <div class="history-item ${index === 0 ? 'latest' : ''}">
+                <div class="history-header">
+                    <span>응답 <span class="log-status ${statusClass}">${statusText}</span></span>
+                    <span class="history-timestamp">${item.timestamp} (${item.duration}ms)</span>
+                </div>
+                <div class="history-content">${JSON.stringify(item.data, null, 2)}</div>
+            </div>
+        `;
+    }).join('');
+
+    elements.responseHistory.innerHTML = historyHtml;
+
+    // 스크롤을 맨 위로 (최신 항목이 위에 있으므로)
+    elements.responseHistory.scrollTop = 0;
+}
+
+// 채팅 메시지 스크롤 자동 이동 개선
+function scrollChatToBottom() {
+    setTimeout(() => {
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    }, 100);
 }
 
 // 전역 함수로 노출 (HTML에서 사용)
