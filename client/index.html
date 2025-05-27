@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서윤 챗봇 모니터링</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-heart"></i>
+                    <h1>서윤 챗봇 모니터링</h1>
+                </div>
+                <div class="server-status" id="serverStatus">
+                    <span class="status-indicator offline"></span>
+                    <span class="status-text">서버 연결 확인 중...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Panel - Chat Interface -->
+            <div class="chat-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-comments"></i> 대화</h2>
+                    <div class="user-controls">
+                        <input type="text" id="userIdInput" placeholder="사용자 ID" value="user123">
+                        <button id="newSessionBtn" class="btn btn-secondary">
+                            <i class="fas fa-plus"></i> 새 세션
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="welcome-message">
+                            <i class="fas fa-robot"></i>
+                            <p>서윤과의 대화를 시작해보세요!</p>
+                        </div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <div class="affinity-display" id="affinityDisplay">
+                            <span class="affinity-label">호감도:</span>
+                            <span class="affinity-value" id="affinityValue">0</span>
+                            <div class="affinity-bar">
+                                <div class="affinity-fill" id="affinityFill"></div>
+                            </div>
+                            <span class="affinity-level" id="affinityLevel">무관심</span>
+                        </div>
+
+                        <div class="input-group">
+                            <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." maxlength="500">
+                            <button id="sendBtn" class="btn btn-primary">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Monitoring -->
+            <div class="monitor-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-chart-line"></i> 모니터링</h2>
+                    <button id="clearLogsBtn" class="btn btn-secondary">
+                        <i class="fas fa-trash"></i> 로그 지우기
+                    </button>
+                </div>
+
+                <div class="monitor-tabs">
+                    <button class="tab-btn active" data-tab="request">요청</button>
+                    <button class="tab-btn" data-tab="response">응답</button>
+                    <button class="tab-btn" data-tab="session">세션</button>
+                    <button class="tab-btn" data-tab="logs">로그</button>
+                </div>
+
+                <div class="monitor-content">
+                    <!-- Request Tab -->
+                    <div class="tab-content active" id="requestTab">
+                        <div class="info-card">
+                            <h3>마지막 요청</h3>
+                            <pre id="lastRequest">요청 대기 중...</pre>
+                        </div>
+                    </div>
+
+                    <!-- Response Tab -->
+                    <div class="tab-content" id="responseTab">
+                        <div class="info-card">
+                            <h3>마지막 응답</h3>
+                            <pre id="lastResponse">응답 대기 중...</pre>
+                        </div>
+                    </div>
+
+                    <!-- Session Tab -->
+                    <div class="tab-content" id="sessionTab">
+                        <div class="info-card">
+                            <h3>현재 세션 정보</h3>
+                            <div class="session-info">
+                                <div class="info-item">
+                                    <label>세션 ID:</label>
+                                    <span id="currentSessionId">없음</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>사용자 ID:</label>
+                                    <span id="currentUserId">없음</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>메시지 수:</label>
+                                    <span id="messageCount">0</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>현재 호감도:</label>
+                                    <span id="currentAffinity">0</span>
+                                </div>
+                            </div>
+                            <button id="loadSessionsBtn" class="btn btn-secondary">
+                                <i class="fas fa-list"></i> 세션 목록 보기
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Logs Tab -->
+                    <div class="tab-content" id="logsTab">
+                        <div class="info-card">
+                            <h3>API 호출 로그</h3>
+                            <div class="logs-container" id="logsContainer">
+                                <p class="no-logs">로그가 없습니다.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Session List Modal -->
+        <div class="modal" id="sessionModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>세션 목록</h3>
+                    <button class="modal-close" id="closeModal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="sessionsList">
+                        <p>세션을 불러오는 중...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
