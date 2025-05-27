@@ -10,7 +10,6 @@ export interface RAGQueryRequest {
 }
 
 export interface RAGQueryResponse {
-    answer: string;
     sources: Array<{
         id: string;
         text: string;
@@ -38,24 +37,14 @@ export class RAGService {
             if (searchResults.length === 0) {
                 logger.warn('No relevant documents found for query');
                 return {
-                    answer: '죄송합니다. 관련된 정보를 찾을 수 없습니다.',
                     sources: [],
                     query: request.query
                 };
             }
 
-            // 3. 검색된 문서들을 컨텍스트로 사용하여 답변 생성
-            const context = searchResults.map(result => result.text);
-            const answer = await openaiService.generateRAGResponse(
-                request.query,
-                context,
-                request.systemPrompt
-            );
-
             logger.info('RAG query processed successfully');
 
             return {
-                answer,
                 sources: searchResults.map(result => ({
                     id: result.id,
                     text: result.text,
