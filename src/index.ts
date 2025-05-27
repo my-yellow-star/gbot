@@ -35,18 +35,20 @@ app.get('/health', (req, res) => {
     });
 });
 
-// 기본 라우트
-app.get('/', (req, res) => {
+// 정보 표시
+app.get('/info', (req, res) => {
     res.json({
-        message: 'RAG Chatbot Server is running!',
+        message: 'Seoyoon Chatbot Server is running!',
         version: '1.0.0',
         endpoints: {
             chat: '/api/chat',
-            rag: '/api/rag',
             health: '/health'
         }
     });
 });
+
+// 스태틱 페이지 라우트
+app.use('/', express.static('client'));
 
 // 에러 핸들링 미들웨어
 app.use(errorHandler);
