@@ -1,13 +1,12 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { chatRoutes } from './routes/chat';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
-
-// 환경 변수 로드
-dotenv.config();
 
 const app: express.Application = express();
 const PORT = process.env.PORT || 5001;
