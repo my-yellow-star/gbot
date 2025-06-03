@@ -54,8 +54,10 @@ export class OpenAIService {
                 messages,
                 tools,
                 tool_choice: "auto",
-                max_tokens: 1000,
-                temperature: 1,
+                max_tokens: 100,
+                temperature: 1.5,
+                frequency_penalty: 1.5,
+                presence_penalty: 1,
             });
 
             const choice = completion.choices[0];
