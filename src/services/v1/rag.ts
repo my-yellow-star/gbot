@@ -1,6 +1,6 @@
 import { openaiService } from './openai';
 import { pineconeService, DocumentChunk } from './pinecone';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 
 export interface RAGQueryRequest {
     query: string;

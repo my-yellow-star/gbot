@@ -1,8 +1,8 @@
-import { openaiService } from './openai';
-import { ragService } from './rag';
-import { DocumentChunk } from './pinecone';
-import { logger } from '../utils/logger';
-import { seoyoonPrompt } from '../utils/prompt';
+import { openaiService } from '../v1/openai';
+import { ragService } from '../v1/rag';
+import { DocumentChunk } from '../v1/pinecone';
+import { logger } from '../../utils/logger';
+import { seoyoonPrompt } from '../../utils/prompt';
 
 export interface ConversationMessage {
     id: string;

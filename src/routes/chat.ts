@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { conversationService } from '../services/conversation';
+import { conversationService } from '../services/v1/conversation';
 import { logger } from '../utils/logger';
 
 const router: Router = Router();

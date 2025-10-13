@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { logger } from '../utils/logger';
+import { logger } from '../../utils/logger';
 import { ConversationMessage } from './conversation';
 
 // Function calling을 위한 타입 정의
