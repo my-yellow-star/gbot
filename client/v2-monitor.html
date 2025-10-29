@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V2 챗봇 모니터링 - 개발자 콘솔</title>
+    <link rel="stylesheet" href="v2-monitor.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <h1>🔬 V2 챗봇 시뮬레이션 모니터</h1>
+            <p class="subtitle">다층 하이브리드 모델 기반 연애 시뮬레이션 디버깅 콘솔</p>
+        </header>
+
+        <!-- 세션 컨트롤 -->
+        <section class="session-control">
+            <div class="control-group">
+                <input type="text" id="userId" placeholder="사용자 ID (예: user123)" value="dev_user">
+                <button id="createSession" class="btn-primary">새 세션 시작</button>
+                <button id="loadSession" class="btn-secondary">세션 불러오기</button>
+            </div>
+            <div class="session-info" id="sessionInfo">
+                <span class="label">세션 ID:</span>
+                <span id="currentSessionId">-</span>
+                <span class="label">턴 수:</span>
+                <span id="turnCount">0</span>
+            </div>
+        </section>
+
+        <!-- 메인 레이아웃 -->
+        <div class="main-layout">
+            <!-- 좌측: 대화 영역 -->
+            <section class="chat-section">
+                <h2>💬 대화</h2>
+                <div class="chat-container" id="chatContainer"></div>
+                <div class="input-area">
+                    <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." />
+                    <button id="sendMessage" class="btn-send">전송</button>
+                </div>
+            </section>
+
+            <!-- 우측: 모니터링 패널 -->
+            <aside class="monitor-panel">
+                <!-- 관계 상태 -->
+                <div class="monitor-card">
+                    <h3>🎭 관계 상태</h3>
+                    <div class="state-display">
+                        <div class="state-badge" id="stateBadge">친구</div>
+                        <div class="state-duration">지속: <span id="stateDuration">0</span>턴</div>
+                    </div>
+                    <div class="state-history">
+                        <h4>상태 변화 이력</h4>
+                        <div id="stateHistory" class="timeline"></div>
+                    </div>
+                </div>
+
+                <!-- 관계 지표 -->
+                <div class="monitor-card">
+                    <h3>📊 관계 지표 (TKAC)</h3>
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <div class="metric-label">신뢰 (T)</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" id="metricT" style="width: 30%"></div>
+                            </div>
+                            <div class="metric-value" id="valueT">0.30</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">편안함 (K)</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" id="metricK" style="width: 50%"></div>
+                            </div>
+                            <div class="metric-value" id="valueK">0.50</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">호감 (A)</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" id="metricA" style="width: 20%"></div>
+                            </div>
+                            <div class="metric-value" id="valueA">0.20</div>
+                        </div>
+                        <div class="metric highlight">
+                            <div class="metric-label">통합 관계 점수 (C)</div>
+                            <div class="metric-bar">
+                                <div class="metric-fill" id="metricC" style="width: 35%"></div>
+                            </div>
+                            <div class="metric-value" id="valueC">0.35</div>
+                        </div>
+                    </div>
+                    <div class="metric-chart" id="metricChart"></div>
+                </div>
+
+                <!-- 감정 벡터 -->
+                <div class="monitor-card">
+                    <h3>💭 감정 상태 (4D 벡터)</h3>
+                    <div class="emotion-panels">
+                        <div class="emotion-panel">
+                            <h4>사용자 감정</h4>
+                            <div class="emotion-vector" id="userEmotion">
+                                <div class="emotion-item">
+                                    <span>Valence</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="valence"></div>
+                                    </div>
+                                    <span class="emotion-value">0.00</span>
+                                </div>
+                                <div class="emotion-item">
+                                    <span>Arousal</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="arousal"></div>
+                                    </div>
+                                    <span class="emotion-value">0.00</span>
+                                </div>
+                                <div class="emotion-item">
+                                    <span>Trust</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="trust"></div>
+                                    </div>
+                                    <span class="emotion-value">0.50</span>
+                                </div>
+                                <div class="emotion-item">
+                                    <span>Attraction</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="attraction"></div>
+                                    </div>
+                                    <span class="emotion-value">0.30</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="emotion-panel">
+                            <h4>챗봇 감정</h4>
+                            <div class="emotion-vector" id="botEmotion">
+                                <div class="emotion-item">
+                                    <span>Valence</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="valence"></div>
+                                    </div>
+                                    <span class="emotion-value">0.10</span>
+                                </div>
+                                <div class="emotion-item">
+                                    <span>Arousal</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="arousal"></div>
+                                    </div>
+                                    <span class="emotion-value">0.00</span>
+                                </div>
+                                <div class="emotion-item">
+                                    <span>Trust</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="trust"></div>
+                                    </div>
+                                    <span class="emotion-value">0.30</span>
+                                </div>
+                                <div class="emotion-item">
+                                    <span>Attraction</span>
+                                    <div class="emotion-slider">
+                                        <div class="slider-fill" data-type="attraction"></div>
+                                    </div>
+                                    <span class="emotion-value">0.10</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 분석 상세 (LLM 1차 호출 결과) -->
+                <div class="monitor-card">
+                    <h3>🔍 턴 분석 (LLM 1차 호출)</h3>
+                    <div id="analysisDetail" class="analysis-detail">
+                        <div class="analysis-empty">대화를 시작하면 분석 결과가 표시됩니다</div>
+                    </div>
+                </div>
+
+                <!-- 기억 시스템 -->
+                <div class="monitor-card">
+                    <h3>🧠 기억 저장소</h3>
+                    <div class="memory-section">
+                        <div class="memory-category">
+                            <h4>사용자 사실 (<span id="factsCount">0</span>)</h4>
+                            <ul id="userFacts" class="memory-list"></ul>
+                        </div>
+                        <div class="memory-category">
+                            <h4>공유 농담 (<span id="jokesCount">0</span>)</h4>
+                            <ul id="sharedJokes" class="memory-list"></ul>
+                        </div>
+                        <div class="memory-category">
+                            <h4>마일스톤 (<span id="milestonesCount">0</span>)</h4>
+                            <ul id="milestones" class="memory-list"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 응답 정책 -->
+                <div class="monitor-card">
+                    <h3>⚙️ 현재 응답 정책</h3>
+                    <div id="policyDisplay" class="policy-display">
+                        <div class="policy-empty">정책 정보가 표시됩니다</div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- 디버그 로그 -->
+        <section class="debug-section">
+            <div class="debug-header">
+                <h3>📝 디버그 로그</h3>
+                <button id="clearLogs" class="btn-small">로그 지우기</button>
+            </div>
+            <div class="debug-logs" id="debugLogs"></div>
+        </section>
+    </div>
+
+    <script src="v2-monitor.js"></script>
+</body>
+
+</html>

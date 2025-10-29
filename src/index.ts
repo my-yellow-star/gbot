@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { chatRoutes } from './routes/chat';
+import { chatV2Routes } from './routes/chatV2';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 
@@ -25,6 +26,7 @@ app.use((req, res, next) => {
 
 // 라우트 설정
 app.use('/api/chat', chatRoutes);
+app.use('/api/v2/chat', chatV2Routes);
 
 // 헬스 체크 엔드포인트
 app.get('/health', (req, res) => {
@@ -39,9 +41,10 @@ app.get('/health', (req, res) => {
 app.get('/info', (req, res) => {
     res.json({
         message: 'Seoyoon Chatbot Server is running!',
-        version: '1.0.0',
+        version: '2.0.0',
         endpoints: {
-            chat: '/api/chat',
+            chatV1: '/api/chat',
+            chatV2: '/api/v2/chat',
             health: '/health'
         }
     });
