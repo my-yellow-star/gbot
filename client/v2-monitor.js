@@ -1,10 +1,7 @@
 /**
  * V2 챗봇 모니터링 클라이언트
  */
-
-// API 설정
-// const API_BASE = 'https://gbot.digging.me/api/v2/chat';
-const API_BASE = 'http://localhost:5001/api/v2/chat';
+const API_BASE = `${window.location.origin}/api/v2/chat`;
 
 // 전역 상태
 let currentSessionId = null;
