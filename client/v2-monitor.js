@@ -3,7 +3,8 @@
  */
 
 // API 설정
-const API_BASE = 'https://gbot.digging.me/api/v2/chat';
+// const API_BASE = 'https://gbot.digging.me/api/v2/chat';
+const API_BASE = 'http://localhost:5001/api/v2/chat';
 
 // 전역 상태
 let currentSessionId = null;
@@ -78,12 +79,21 @@ async function createNewSession() {
         elements.currentSessionId.textContent = currentSessionId;
         elements.turnCount.textContent = '0';
 
-        // 초기 상태 표시
-        updateStateDisplay(data.state);
-        updateMetricsDisplay(data.metrics);
+        // 초기 상태 표시 (chatV2.ts 응답 형식에 맞게 수정)
+        if (data.emotionDetail) {
+            updateStateDisplay(data.emotionDetail.relationshipState);
+            updateMetricsDisplay({
+                T: data.emotionDetail.trustLevel / 100,
+                K: data.emotionDetail.comfortLevel / 100,
+                A: data.emotionDetail.affectionLevel / 100,
+                C: data.affinity / 100
+            });
+        }
 
         addLog(`✅ 세션 생성 완료: ${currentSessionId}`, 'success');
-        addLog(`초기 상태: ${data.state}, C=${data.metrics.C.toFixed(2)}`, 'info');
+        if (data.emotionDetail) {
+            addLog(`초기 상태: ${data.emotionDetail.relationshipState}, C=${(data.affinity / 100).toFixed(2)}`, 'info');
+        }
 
         // 대화 영역 초기화
         elements.chatContainer.innerHTML = '<div class="welcome-msg">💬 대화를 시작하세요!</div>';
@@ -215,38 +225,63 @@ async function sendMessage() {
             throw new Error(data.error || '메시지 전송 실패');
         }
 
-        // UI 업데이트
-        addMessageToChat('bot', data.response);
-        updateStateDisplay(data.state);
-        updateMetricsDisplay(data.metrics);
-        updateEmotionDisplay(data.emotion);
+        // UI 업데이트 (chatV2.ts 응답 형식에 맞게 수정)
+        addMessageToChat('bot', data.message);
+
+        // emotionDetail에서 필요한 정보 추출
+        if (data.emotionDetail) {
+            updateStateDisplay(data.emotionDetail.relationshipState);
+            updateMetricsDisplay({
+                T: data.emotionDetail.trustLevel / 100,
+                K: data.emotionDetail.comfortLevel / 100,
+                A: data.emotionDetail.affectionLevel / 100,
+                C: data.affinity / 100
+            });
+            updateEmotionDisplay({
+                user: `V:${data.emotionDetail.userEmotionValence.toFixed(2)} A:${data.emotionDetail.userEmotionArousal.toFixed(2)}`,
+                bot: `V:${data.emotionDetail.botEmotionValence.toFixed(2)} A:${data.emotionDetail.botEmotionArousal.toFixed(2)}`
+            });
+        }
 
         // 턴 수 증가
         const currentTurn = parseInt(elements.turnCount.textContent) + 1;
         elements.turnCount.textContent = currentTurn;
 
         // 응답 정책 즉시 업데이트 (상태 기반 추정)
-        const policy = estimatePolicy(data.state, data.metrics);
-        updatePolicyDisplay(policy, data.state);
+        if (data.emotionDetail) {
+            const metrics = {
+                T: data.emotionDetail.trustLevel / 100,
+                K: data.emotionDetail.comfortLevel / 100,
+                A: data.emotionDetail.affectionLevel / 100,
+                C: data.affinity / 100
+            };
+            const policy = estimatePolicy(data.emotionDetail.relationshipState, metrics);
+            updatePolicyDisplay(policy, data.emotionDetail.relationshipState);
+        }
 
         // 상태 정보 로드 (분석 상세 등)
         await loadSessionStatus();
 
-        addLog(`✅ 응답 수신: ${data.response.substring(0, 50)}...`, 'success');
-        addLog(`상태: ${data.state}, C=${data.metrics.C.toFixed(3)}, T=${data.metrics.T.toFixed(3)}`, 'info');
-
-        // 상태 전이 감지
-        if (lastTurnData && lastTurnData.state !== data.state) {
-            addLog(`🎉 관계 상태 전이! ${getStateLabel(lastTurnData.state)} → ${getStateLabel(data.state)}`, 'success');
+        addLog(`✅ 응답 수신: ${data.message.substring(0, 50)}...`, 'success');
+        if (data.emotionDetail) {
+            addLog(`상태: ${data.emotionDetail.relationshipState}, C=${(data.affinity / 100).toFixed(3)}, T=${(data.emotionDetail.trustLevel / 100).toFixed(3)}`, 'info');
         }
 
-        lastTurnData = data;
+        // 상태 전이 감지
+        if (data.emotionDetail) {
+            if (lastTurnData && lastTurnData.emotionDetail &&
+                lastTurnData.emotionDetail.relationshipState !== data.emotionDetail.relationshipState) {
+                addLog(`🎉 관계 상태 전이! ${getStateLabel(lastTurnData.emotionDetail.relationshipState)} → ${getStateLabel(data.emotionDetail.relationshipState)}`, 'success');
+            }
 
-        // 메트릭 히스토리에 추가
-        metricHistory.T.push(data.metrics.T);
-        metricHistory.K.push(data.metrics.K);
-        metricHistory.A.push(data.metrics.A);
-        metricHistory.C.push(data.metrics.C);
+            lastTurnData = data;
+
+            // 메트릭 히스토리에 추가
+            metricHistory.T.push(data.emotionDetail.trustLevel / 100);
+            metricHistory.K.push(data.emotionDetail.comfortLevel / 100);
+            metricHistory.A.push(data.emotionDetail.affectionLevel / 100);
+            metricHistory.C.push(data.affinity / 100);
+        }
 
         // 차트 업데이트 (간단한 텍스트 표시)
         updateMetricChart();
